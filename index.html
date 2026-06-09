@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AMN Bin Check</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; padding: 16px; }
+    .header { background: #1a73e8; color: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    .header h1 { font-size: 20px; margin-bottom: 4px; }
+    .header p { font-size: 14px; opacity: 0.9; }
+    .status { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .loading { background: #e3f2fd; color: #1565c0; }
+    .success { background: #e8f5e9; color: #2e7d32; }
+    .error { background: #fbe9e7; color: #c62828; }
+    .empty { background: #fff3e0; color: #e65100; }
+    .item { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .item-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .item-sku { font-weight: 600; font-size: 14px; color: #1a73e8; word-break: break-all; }
+    .tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; white-space: nowrap; margin-left: 8px; }
+    .tag-depleted { background: #fce4ec; color: #c62828; }
+    .tag-low { background: #fff3e0; color: #e65100; }
+    .item-name { font-size: 12px; color: #888; margin-bottom: 10px; }
+    .expected { font-size: 22px; font-weight: 700; color: #333; margin-bottom: 12px; }
+    .expected span { font-size: 13px; font-weight: 400; color: #888; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .verify-btn { padding: 10px 20px; border: 2px solid #2e7d32; border-radius: 6px; background: #fff; color: #2e7d32; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; }
+    .verify-btn.checked { background: #2e7d32; color: #fff; }
+    .or-text { font-size: 12px; color: #999; }
+    .adjust-wrap { display: flex; align-items: center; gap: 6px; }
+    .adjust-wrap label { font-size: 13px; color: #555; }
+    .adjust-wrap input[type="number"] { width: 80px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; text-align: center; -webkit-appearance: none; }
+    .adjust-wrap input[type="number"]:focus { border-color: #1a73e8; outline: none; }
+    .notes-row { margin-top: 8px; }
+    .notes-row input { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; }
+    .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:disabled { background: #bbb; cursor: not-allowed; }
+    .count-bar { text-align: center; font-size: 13px; color: #666; padding: 8px; }
+    iframe { display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>AMN Bin Check</h1>
+    <p id="headerSub">Loading items...</p>
+  </div>
+  <div id="status" class="status loading">Loading verification items...</div>
+  <div id="items"></div>
+  <div id="countBar" class="count-bar" style="display:none"></div>
+  <button id="submitBtn" class="btn btn-primary" style="display:none" onclick="submitAll()">Submit Verification</button>
+  <iframe id="submitFrame" name="submitFrame"></iframe>
+
+<script>
+var checkItems = [];
+var apiUrl = '';
+
+function init() {
+  var hash = window.location.hash.substring(1);
+  if (!hash) {
+    showError('No data found. Please use the link from your email.');
+    return;
+  }
+
+  try {
+    var decoded = atob(hash);
+    var payload = JSON.parse(decoded);
+    checkItems = payload.items || [];
+    apiUrl = payload.api || '';
+  } catch (e) {
+    showError('Invalid data in link. Please request a new bin check.');
+    return;
+  }
+
+  if (checkItems.length === 0) {
+    document.getElementById('status').className = 'status empty';
+    document.getElementById('status').textContent = 'No items pending verification.';
+    document.getElementById('headerSub').textContent = 'Nothing to verify';
+    return;
+  }
+
+  renderItems();
+}
+
+function showError(msg) {
+  document.getElementById('status').className = 'status error';
+  document.getElementById('status').textContent = msg;
+  document.getElementById('headerSub').textContent = 'Error';
+}
+
+function renderItems() {
+  document.getElementById('status').style.display = 'none';
+  document.getElementById('headerSub').textContent = checkItems.length + ' items to verify';
+  document.getElementById('submitBtn').style.display = 'block';
+  document.getElementById('countBar').style.display = 'block';
+
+  var container = document.getElementById('items');
+  for (var i = 0; i < checkItems.length; i++) {
+    var item = checkItems[i];
+    var isDepleted = item.a === 'D';
+    var tagClass = isDepleted ? 'tag-depleted' : 'tag-low';
+    var tagText = isDepleted ? 'Depleted' : 'Low';
+
+    var div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML =
+      '<div class="item-top">' +
+        '<div class="item-sku">' + esc(item.c) + '</div>' +
+        '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
+      '</div>' +
+      '<div class="item-name">' + esc(item.n) + '</div>' +
+      '<div class="expected">' + item.s + ' <span>expected units</span></div>' +
+      '<div class="actions">' +
+        '<button class="verify-btn" id="vbtn_' + i + '" onclick="toggleVerify(' + i + ')">&#10003; Confirmed</button>' +
+        '<span class="or-text">or</span>' +
+        '<div class="adjust-wrap">' +
+          '<label>Actual:</label>' +
+          '<input type="number" id="count_' + i + '" min="0" placeholder="—" oninput="onCountInput(' + i + ')">' +
+        '</div>' +
+      '</div>' +
+      '<div class="notes-row">' +
+        '<input type="text" id="notes_' + i + '" placeholder="Notes (optional)">' +
+      '</div>';
+    container.appendChild(div);
+  }
+  updateBar();
+}
+
+function toggleVerify(idx) {
+  var btn = document.getElementById('vbtn_' + idx);
+  var input = document.getElementById('count_' + idx);
+  var isChecked = btn.className.indexOf('checked') !== -1;
+
+  if (isChecked) {
+    btn.className = 'verify-btn';
+    input.disabled = false;
+  } else {
+    btn.className = 'verify-btn checked';
+    input.value = '';
+    input.disabled = true;
+  }
+  updateBar();
+}
+
+function onCountInput(idx) {
+  var btn = document.getElementById('vbtn_' + idx);
+  btn.className = 'verify-btn';
+  document.getElementById('count_' + idx).disabled = false;
+  updateBar();
+}
+
+function updateBar() {
+  var done = 0;
+  for (var i = 0; i < checkItems.length; i++) {
+    var btn = document.getElementById('vbtn_' + i);
+    var input = document.getElementById('count_' + i);
+    if (btn.className.indexOf('checked') !== -1 || input.value !== '') done++;
+  }
+  document.getElementById('countBar').textContent = done + ' of ' + checkItems.length + ' verified';
+  document.getElementById('submitBtn').disabled = (done === 0);
+}
+
+function submitAll() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  var data = [];
+  for (var i = 0; i < checkItems.length; i++) {
+    var vbtn = document.getElementById('vbtn_' + i);
+    var input = document.getElementById('count_' + i);
+    var confirmed = vbtn.className.indexOf('checked') !== -1;
+
+    if (confirmed) {
+      data.push({
+        row: checkItems[i].r,
+        actualCount: String(checkItems[i].s),
+        notes: document.getElementById('notes_' + i).value || 'Confirmed as expected'
+      });
+    } else if (input.value !== '') {
+      data.push({
+        row: checkItems[i].r,
+        actualCount: input.value,
+        notes: document.getElementById('notes_' + i).value
+      });
+    }
+  }
+
+  if (data.length === 0) {
+    btn.disabled = false;
+    btn.textContent = 'Submit Verification';
+    return;
+  }
+
+  // Submit via hidden form POST to Apps Script
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = apiUrl;
+  form.target = 'submitFrame';
+
+  var input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'data';
+  input.value = JSON.stringify(data);
+  form.appendChild(input);
+
+  document.body.appendChild(form);
+
+  // Listen for iframe load (indicates submission completed)
+  var frame = document.getElementById('submitFrame');
+  frame.onload = function() {
+    var statusEl = document.getElementById('status');
+    statusEl.style.display = 'block';
+    statusEl.className = 'status success';
+    statusEl.textContent = data.length + ' items verified. Counts submitted successfully.';
+    btn.textContent = 'Submitted';
+    var inputs = document.querySelectorAll('input, button.verify-btn');
+    for (var j = 0; j < inputs.length; j++) inputs[j].disabled = true;
+  };
+
+  // Timeout fallback in case iframe doesn't fire onload
+  setTimeout(function() {
+    if (btn.textContent === 'Submitting...') {
+      var statusEl = document.getElementById('status');
+      statusEl.style.display = 'block';
+      statusEl.className = 'status success';
+      statusEl.textContent = data.length + ' items submitted. If counts don\'t appear in the sheet, please notify your manager.';
+      btn.textContent = 'Submitted';
+      var inputs = document.querySelectorAll('input, button.verify-btn');
+      for (var j = 0; j < inputs.length; j++) inputs[j].disabled = true;
+    }
+  }, 8000);
+
+  form.submit();
+  document.body.removeChild(form);
+}
+
+function esc(str) {
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(str || ''));
+  return d.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>
