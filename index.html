@@ -110,7 +110,9 @@ function renderItems() {
         '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
       '</div>' +
       '<div class="item-name">' + esc(item.n) + '</div>' +
-      '<div class="expected">' + item.s + ' <span>expected units</span></div>' +
+      '<div class="expected">' + item.s + ' <span>expected units</span>' +
+      (item.b ? ' &nbsp;<span style="font-size:13px;font-weight:500;color:#1a73e8;">📍 ' + esc(item.b) + '</span>' : '') +
+      '</div>' +
       '<div class="actions">' +
         '<button class="verify-btn" id="vbtn_' + i + '" onclick="toggleVerify(' + i + ')">&#10003; Confirmed</button>' +
         '<span class="or-text">or</span>' +
