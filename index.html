@@ -80,6 +80,15 @@ function init() {
     return;
   }
 
+  // Sort by bin location so employee walks bins in order
+  checkItems.sort(function(a, b) {
+    var binA = (a.b || 'ZZZ').toUpperCase();
+    var binB = (b.b || 'ZZZ').toUpperCase();
+    if (binA < binB) return -1;
+    if (binA > binB) return 1;
+    return 0;
+  });
+
   renderItems();
 }
 
@@ -106,13 +115,14 @@ function renderItems() {
     div.className = 'item';
     div.innerHTML =
       '<div class="item-top">' +
-        '<div class="item-sku">' + esc(item.c) + '</div>' +
-        '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
+        (item.b ? '<div style="font-size:18px;font-weight:700;color:#1a73e8;margin-bottom:4px;">📍 ' + esc(item.b) + '</div>' : '') +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+          '<div class="item-sku">' + esc(item.c) + '</div>' +
+          '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
+        '</div>' +
       '</div>' +
       '<div class="item-name">' + esc(item.n) + '</div>' +
-      '<div class="expected">' + item.s + ' <span>expected units</span>' +
-      (item.b ? ' &nbsp;<span style="font-size:13px;font-weight:500;color:#1a73e8;">📍 ' + esc(item.b) + '</span>' : '') +
-      '</div>' +
+      '<div class="expected">' + item.s + ' <span>expected units</span></div>' +
       '<div class="actions">' +
         '<button class="verify-btn" id="vbtn_' + i + '" onclick="toggleVerify(' + i + ')">&#10003; Confirmed</button>' +
         '<span class="or-text">or</span>' +
